@@ -8,6 +8,7 @@ from __future__ import unicode_literals, print_function, absolute_import
 
 import re
 import sys
+import functools
 
 # account for differences in in Python 2 and 3
 if sys.version_info[0] < 3:
@@ -18,14 +19,43 @@ if sys.version_info[0] < 3:
 else:
     pass
 
-# spec with no groups
-_spec = r'(%%|(?:%(?:\(\w+\))?\*?[0-9]*(?:h{1,2}|l{1,2}|j|z|t|L)?[duioxeEfFgGcrs]))'
-_spec = re.compile(_spec)
+# spec with no groups for splitting
+_splitter = r'(%%|(?:%(?:\(\w+\))?\*?[0-9]*(?:h{1,2}|l{1,2}|j|z|t|L)?[duioxeEfFgGcrs]))'
+_splitter = re.compile(_splitter)
 
 # spec with groups
-_gspec = r'(?P<escape>%%)|(?:%(?P<key>\(\w+\))?(?P<skip>\*)?(?P<width>[0-9]+)?(?:h{1,2}|l{1,2}|j|z|t|L)?(?P<spec>[duioxXeEfFgGcrs]))'
+_gspec = r'(?P<escape>%%)|(?:%(?:\((?P<key>\w+)\))?(?P<skip>\*)?(?P<width>[0-9]+)?(?:h{1,2}|l{1,2}|j|z|t|L)?(?P<spec>[duioxXeEfFgGcrs]))'
 _gspec = re.compile(_gspec)
 
+
+# Map specifiers to their regex. Leave num repetitions to be filled in later.
+_fmtdict = dict()
+_fmtdict['i'] = r'[-+]?(?:0[xX][\dA-Fa-f]{n}|0[0-7]*|\d{n})'
+_fmtdict['d'] = r'[-+]?\d{n}'
+_fmtdict['u'] = r'\d{n}'
+_fmtdict['o'] = r'[-+]?[0-7]{n}'
+_fmtdict['x'] = r'[-+]?(0[xX])?[\dA-Fa-f]{n}'
+_fmtdict['e'] = r'[-+]?(\d{n}(\.\d*)?|\.\d{n})([eE][-+]?\d{n})?'
+_fmtdict['f'] = _fmtdict['e']
+_fmtdict['g'] = _fmtdict['e']
+_fmtdict['s'] = r'\S{n}'
+_fmtdict['r'] = _fmtdict['s']
+_fmtdict['c'] = r'.{n}'
+
+
+# map specifiers to callables to cast to python types
+_calldict = dict()
+_calldict['i'] = int
+_calldict['d'] = functools.partial(int, base=10)
+_calldict['u'] = _calldict['d']
+_calldict['o'] = functools.partial(int, base=8)
+_calldict['x'] = functools.partial(int, base=16)
+_calldict['e'] = float
+_calldict['f'] = _calldict['e']
+_calldict['g'] = _calldict['e']
+_calldict['s'] = lambda val: val  # allows bytes and strs to both work
+_calldict['c'] = _calldict['s']
+_calldict['r'] = eval
 
 class SF_Pattern(object):
     def __new__(cls, fmt):
@@ -49,7 +79,7 @@ class SF_Pattern(object):
 
 
 def compile(fmt):
-    """Returns a new scanf pattern object.
+    """Return a new scanf pattern object.
 
     Compiling a pattern is more efficient than using the module scan function.
     """
@@ -68,71 +98,87 @@ def _compile_pattern(pat):
     return re.compile(res).match
 
 
-def translate(scanf_spec):
-    """Translate a scanf format specifier into a regular expression string."""
-    split = _spec.split(scanf_spec)
-    print(split)
+def _process_ws(s):
+    # split on whitespace
+    split = s.split()
 
-    strlst = []
-    for i, s in enumerate(split):
-        if i % 2 == 0:
-            # split on whitespace
-            split = s.split()
-            print(split)
+    # escape characters that might cause problems with regex
+    for j in range(len(split)):
+        split[j] = re.escape(split[j])
 
-            # escape characters that might cause problems with regex
-            for j in range(len(split)):
-                split[j] = re.escape(split[j])
-            print(split)
+    # replace whitespace to consume all whitespace
+    join = r'\s+'.join(split)
 
-            # replace whitespace to consume all whitespace
-            join = r'\s+'.join(split)
-            print(join)
-            strlst.append(join)
+    return join
+
+
+def _process_spec(s):
+    sfd = _gspec.match(s).groupdict()
+    print(sfd)
+
+    if sfd['escape']:
+        return r'\%'
+
+    spec = _fmtdict[sfd['spec'].lower()]
+
+    if sfd['width']:
+        if sfd['spec'] == 'c':
+            spec = spec.format(n='{' + sfd['width'] + '}')
         else:
-            sfd = _gspec.match(s).groupdict()
-            print(sfd)
+            spec = spec.format(n='{1,' + sfd['width'] + '}')
+    elif sfd['spec'] == 'c':
+        spec = spec.format(n='')
+    else:
+        spec = spec.format(n='+')
 
-            if sfd['escape']:
-                strlst.append(r'\%')
-                continue
+    if sfd['skip']:
+        spec = '(?:' + spec + ')'
+    elif sfd['key']:
+        spec = '(?<' + sfd['key'] + '>' + spec + ')'
+    else:
+        spec = '(' + spec + ')'
 
-            if sfd['skip']:
-                grpstrt = '(?:'
-            elif sfd['key']:
-                grpstrt = '(?<' + sfd['key'] + '>'
-            else:
-                grpstrt = '('
+    # all other specs should consume leading whitespace
+    if sfd['spec'] != 'c':
+        spec = r'\s*' + spec
 
-            if sfd['spec'] == 'i':
-                spec = r'[-+]?(?:0[xX][\dA-Fa-f]+|0[0-7]*|\d+)'
-            elif sfd['spec'] == 'd':
-                spec = r'[-+]?\d+'
-            elif sfd['spec'] == 'o':
-                spec = r'[-+]?[0-7]+'
-            elif sfd['spec'].lower() == 'x':
-                spec = r'[-+]?(0[xX])?[\dA-Fa-f]+'
+    return spec
 
-            if sfd['width']:
-                pass
-            strlst.append(s)
 
+def translate(scanf_spec):
+    """Translate a scanf format into a regular expression."""
+    strlst = []
+
+    split = _splitter.split(scanf_spec)
+    for i, s in enumerate(split):
+        if i % 2:
+            strlst.append(_process_spec(s))
+        else:
+            strlst.append(_process_ws(s))
+
+    print(scanf_spec)
     print(strlst)
-    return scanf_spec
+    print(''.join(strlst))
+
+    return ''.join(strlst)
 
 
 def scan(fmt, string):
     """Scan the provided string.
 
     Return either a tuple or a dictionary of parsed values, or None if the
-    string did not conform to the format."""
+    string did not conform to the format. For a format string with no formats,
+    an empty tuple will be returned.
+    """
     re_fmt = compile(fmt)
     return re_fmt.scan(string)
 
 
 def _test():
     translate('.punct*$uation @ %d middle %s almost end %c')
-    translate('%d middle %s almost end %c')
+    translate('%(singlechar)7c middle %(s)s almost end %(d)4d')
+    translate('    words @ %d middle %s almost end %c')
+    translate('    some escapes %% and some other stuff %d')
 
 if __name__ == '__main__':
     _test()
