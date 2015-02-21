@@ -34,8 +34,11 @@ _fmtdict['i'] = r'[-+]?(?:0[xX][\dA-Fa-f]{n}|0[0-7]*|\d{n})'
 _fmtdict['d'] = r'[-+]?\d{n}'
 _fmtdict['u'] = r'\d{n}'
 _fmtdict['o'] = r'[-+]?[0-7]{n}'
-_fmtdict['x'] = r'[-+]?(0[xX])?[\dA-Fa-f]{n}'
-_fmtdict['e'] = r'[-+]?(\d{n}(\.\d*)?|\.\d{n})([eE][-+]?\d{n})?'
+_fmtdict['x'] = r'[-+]?(?:0[xX])?[\dA-Fa-f]{n}'
+_fmtdict['e'] = r'(?:[-+]?\d{n}(?:\.\d*)?)|'
+_fmtdict['e'] += r'(?:\.\d{n})(?:[eE][-+]?\d{n})|'
+_fmtdict['e'] += r'(?:[-+]?[nN][aA][aN])|'  # Not a Number
+_fmtdict['e'] += r'(?:[-+]?[iI][nN][fF](?:[iI][nN][iI][tT][yY])?)'  # infinity
 _fmtdict['f'] = _fmtdict['e']
 _fmtdict['g'] = _fmtdict['e']
 _fmtdict['s'] = r'\S{n}'
@@ -179,6 +182,7 @@ def _test():
     translate('%(singlechar)7c middle %(s)s almost end %(d)4d')
     translate('    words @ %d middle %s almost end %c')
     translate('    some escapes %% and some other stuff %d')
+    translate('try %e some %f floats %g')
 
 if __name__ == '__main__':
     _test()
