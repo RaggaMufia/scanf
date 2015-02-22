@@ -75,12 +75,13 @@ _calldict['r'] = eval
 
 class SF_Pattern(object):
     def __new__(cls, format):
+        """Compile pattern and determine return type."""
         self = super(SF_Pattern, cls).__new__(cls)
 
         if isinstance(format, bytes):
-            uni_str = str(format, 'ISO-8859-1')
-            trans_str = translate(uni_str)
-            re_fmt = bytes(trans_str, 'ISO-8859-1')
+            uni_str = format.decode('ISO-8859-1')  # decode to unicode
+            trans_str = translate(uni_str)  # translate only works with unicode
+            re_fmt = trans_str.encode('ISO-8859-1')  # encode back to bytes
         else:
             re_fmt = translate(format)
         self._format = format
@@ -88,9 +89,9 @@ class SF_Pattern(object):
 
         self._re = cre = re.compile(re_fmt)
 
-        if len(cre.groupindex()) != cre.groups():
+        if cre.groupindex and len(cre.groupindex) != cre.groups:
             raise RuntimeError('cannot mix mapped and unmapped specifiers')
-        elif not cre.groupindex():
+        elif not cre.groupindex:
             self._retfunc = _return_tuple
             self._type = tuple
         else:
@@ -99,7 +100,8 @@ class SF_Pattern(object):
 
         return self
 
-    def __init__(self, fmt):
+    def __init__(self, format):
+        """Dummy function."""
         raise RuntimeError('Cannot instantiate SF_Pattern objects directly')
 
     def scanf(self, string):
@@ -131,12 +133,44 @@ class SF_Pattern(object):
         return self._type
 
 
+class _SizedDict(dict):
+    def __init__(self, max=128):
+        self.__max = int(max)
+
+    def __setitem__(self, key, val):
+        # In Python 2, byte strings and unicode strings silently cast to,
+        # eachother if their values are equal. In Python 3, this always fails.
+        # To make sure Python 2 works like Python 3, we put the value and its
+        # type in a tuple. Since tuples and class types are hashable, this
+        # works as we want it to.
+        if key not in self and len(self) + 1 > self.__max:
+            self.popitem()
+
+        return super(_SizedDict, self).__setitem__((type(key), key), val)
+
+    def __getitem__(self, key):
+        return super(_SizedDict, self).__getitem__((type(key), key))
+
+_cache = _SizedDict()
+
+
+def purge():
+    """Clear the cache."""
+    _cache.clear()
+
+
 def compile(format):
     """Return a new scanf pattern object.
 
     Compiling a pattern is more efficient than using the module scanf function.
+    However, previous formats are cached, so the cost is not too great in most
+    circumstances.
     """
-    return SF_Pattern.__new__(SF_Pattern, format)
+    try:
+        return _cache[format]
+    except KeyError:
+        _cache[format] = retval = SF_Pattern.__new__(SF_Pattern, format)
+        return retval
 
 
 def _process_ws(s):
@@ -211,11 +245,15 @@ def scanf(format, string):
 
 
 def _test():
-    print(translate('.punct*$uation @ %d middle %s almost end %c'))
+    # print(translate('.punct*$uation @ %d middle %s almost end %c'))
     print(translate('%(singlechar)7c middle %(s)s almost end %(d)4d'))
-    print(translate('    words @ %d middle %s almost end %c'))
-    print(translate('    some escapes %% and some other stuff %d'))
-    print(translate('try %e some %f floats %g'))
+    # print(translate('    words @ %d middle %s almost end %c'))
+    # print(translate('    some escapes %% and some other stuff %d'))
+    # print(translate('try %e some %f floats %g'))
+
+    print(scanf('%s: simple format', 'happy: simple format'))
+    print(scanf(b'%s: bytes format', b'happy: bytes format'))
+    print(scanf(b'parse a float %(key)f', b'parse a float 12345.2345'))
 
 if __name__ == '__main__':
     _test()
