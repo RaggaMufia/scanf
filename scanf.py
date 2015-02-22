@@ -50,9 +50,10 @@ _fmts['x'] = r'[-+]?(?:0[xX])?[0-9A-Fa-f]+'
 _fmts['i'] = r'[-+]?(?:(?:0[xX][0-9A-Fa-f]+)|(?:0[0-7]+)|(?:[0-9]+))'
 
 # real numbers
-_fmts['f'] = r'(?:[-+]?[0-9]*(?:\.[0-9]*)?(?:[eE][-+]?[0-9]+)?)|'  # literal
-_fmts['f'] += r'(?:[-+]?[nN][aA][nN])|'  # Not a Number
-_fmts['f'] += r'(?:[-+]?[iI][nN][fF](?:[iI][nN][iI][tT][yY])?)'  # infinity
+_fmts['f'] = r'(?:[-+]?(?:(?:[0-9]+\.?)|(?:\.[0-9]+)|(?:[0-9]+\.[0-9]+)))'
+_fmts['f'] += r'(?:[eE][-+]?[0-9]+)?'  # optional exponent
+_fmts['f'] += r'|(?:[-+]?[nN][aA][nN])'  # Not a Number (NaN)
+_fmts['f'] += r'|(?:[-+]?[iI][nN][fF](?:[iI][nN][iI][tT][yY])?)'  # infinity
 _fmts['e'] = _fmts['f']
 _fmts['g'] = _fmts['f']
 
@@ -298,7 +299,8 @@ def _test():
 
     scanf('%s: unicode format', 'happy: unicode format')
     scanf(b'%s: bytes format', b'happy: bytes format')
-    scanf(b'floats: %f %f %f %f', b'floats: 1.0 .1e20 NaN -Inf')
+    scanf(b'floats: %f %f %f %f', b'floats: 1.0 .1e20 NaN Inf')
+    scanf(b'floats: %f %f %f %f', b'floats: -1.0 -.1e20 -NaN -Inf')
     scanf(b'exp float %(float)f', b'exp float 12345.2345e2')
 
 if __name__ == '__main__':
