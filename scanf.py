@@ -59,8 +59,8 @@ _fmts['g'] = _fmts['f']
 
 # strings and chars
 _fmts['s'] = r'\S{n}'
-_fmts['r'] = _fmts['s']
 _fmts['c'] = r'.{n}'
+_fmts['r'] = _fmts['c']
 
 
 # map specifiers to callables to cast to python types
@@ -131,7 +131,7 @@ class SF_Pattern(object):
 
     @property
     def type(self):
-        """The return type from scan method.
+        """The return type from scanf method.
 
         This will be either a tuple or a dictionary type object.
         """
@@ -148,7 +148,7 @@ class _SizedDict(dict):
         # To make sure Python 2 works like Python 3, we put the value and its
         # type in a tuple. Since tuples and class types are hashable, this
         # works as we want it to.
-        if key not in self and len(self) + 1 > self.__max:
+        if (type(key), key) not in self and len(self) + 1 > self.__max:
             self.popitem()
 
         return super(_SizedDict, self).__setitem__((type(key), key), val)
@@ -208,7 +208,15 @@ def _process_ws(s):
     return join
 
 
+_width = {'c': ('{', '}'),
+          'r': ('{1', '}?')}  # non-greedy
+
+_no_width = {'c': '',
+             'r': '*?'}  # non-greedy
+
+
 def _process_spec(match):
+    """Convert scanf specifier string into regex string."""
     # sfd = _gspec.match(s).groupdict()
     sfd = match.groupdict()
 
@@ -218,41 +226,24 @@ def _process_spec(match):
     spec = _fmts[sfd['spec'].lower()]
 
     if sfd['width']:
-        if sfd['spec'] == 'c':
-            spec = spec.format(n='{' + sfd['width'] + '}')
-        else:
-            spec = spec.format(n='{1,' + sfd['width'] + '}')
-    elif sfd['spec'] == 'c':
-        spec = spec.format(n='')
+        ends = _width.get(sfd['spec'], ('{', '}'))
+        spec = spec.format(n=ends[0] + sfd['width'] + ends[1])
     else:
-        spec = spec.format(n='+')
+        reps = _no_width.get(sfd['spec'], '+')
+        spec = spec.format(n=reps)
 
     if sfd['skip']:
-        spec = '(?:' + spec + ')'
+        spec = '(?:' + spec + ')'  # non-capturing re group
     elif sfd['key']:
-        spec = '(?P<' + sfd['key'] + '>' + spec + ')'
+        spec = '(?P<' + sfd['key'] + '>' + spec + ')'  # keyword group
     else:
-        spec = '(' + spec + ')'
+        spec = '(' + spec + ')'  # regular group
 
     # all other specs should consume leading whitespace
     if sfd['spec'] != 'c':
         spec = r'\s*' + spec
 
     return spec
-
-
-def old_translate(scanf_spec):
-    """Translate a scanf format into a regular expression."""
-    strlst = []
-
-    split = _splitter.split(scanf_spec)
-    for i, s in enumerate(split):
-        if i % 2:
-            strlst.append(_process_spec(s))
-        else:
-            strlst.append(_process_ws(s))
-
-    return ''.join(strlst)
 
 
 # TODO: also return a tuple or dictionary of types to cast to
@@ -262,13 +253,10 @@ def translate(format):
     for match in _gspec.finditer(format):
         strlist.append(_process_ws(format[end_index:match.start()]))
         strlist.append(_process_spec(match))
-        # print('%r' % match.group(0))
         end_index = match.end()
-        # print('match end: %r' % (match.end()))
-        # print('format end: %r' % (len(format)))
 
+    # deal with trailing characters
     if end_index != len(format):
-        print('trailing characters: %r' % format[end_index:])
         strlist.append(_process_ws(format[end_index:]))
 
     return ''.join(strlist)
