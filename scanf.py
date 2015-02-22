@@ -223,8 +223,7 @@ def _process_spec(s):
     return spec
 
 
-# TODO: also return a tuple or dictionary of types to cast to
-def translate(scanf_spec):
+def old_translate(scanf_spec):
     """Translate a scanf format into a regular expression."""
     strlst = []
 
@@ -238,6 +237,18 @@ def translate(scanf_spec):
     return ''.join(strlst)
 
 
+# TODO: also return a tuple or dictionary of types to cast to
+def translate(format):
+    strlist = []
+    end_index = 0
+    for match in _gspec.finditer(format):
+        strlist.append(_process_ws(format[end_index:match.start()]))
+        strlist.append(_process_spec(format[match.start():match.end()]))
+        end_index = match.end()
+
+    return ''.join(strlist)
+
+
 def scanf(format, string):
     """Scan the provided string.
 
@@ -247,16 +258,16 @@ def scanf(format, string):
     """
     re_fmt = compile(format)
     result = re_fmt.scanf(string)
-    print('"%s" <- "%s" = %s' % (format, string, result), file=sys.stderr)
+    print('%r <- %r = %r' % (format, string, result), file=sys.stderr)
     return result
 
 
 def _test():
+    # translate('%(c)7c middle %(s)s end %(i)i')
+    # return
+
     scanf('.*$ @ %d middle %s end %c', '.*$ @ 9 middle mo end ?')
-    scanf('%(c)7c middle %(s)s end %(d)4d', 'asdfghj middle str end 1234')
-    # scanf('    words @ %d middle %s almost end %c')
-    # scanf('    some escapes %% and some other stuff %d')
-    # scanf('try %e some %f floats %g')
+    scanf('%(c)7c middle %(s)s end %(i)i', 'asdfghj middle str end 1234')
 
     scanf('%s: unicode format', 'happy: unicode format')
     scanf(b'%s: bytes format', b'happy: bytes format')
