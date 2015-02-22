@@ -41,36 +41,40 @@ def _return_dict(match):
 
 
 # Map specifiers to their regex. Leave num repetitions to be filled in later.
-_fmtdict = dict()
-_fmtdict['i'] = r'[-+]?(?:0[xX][\dA-Fa-f]{n}|0[0-7]*|\d{n})'
-_fmtdict['d'] = r'[-+]?\d{n}'
-_fmtdict['u'] = r'\d{n}'
-_fmtdict['o'] = r'[-+]?[0-7]{n}'
-_fmtdict['x'] = r'[-+]?(?:0[xX])?[\dA-Fa-f]{n}'
-_fmtdict['e'] = r'(?:[-+]?\d{n}(?:\.\d*)?)|'
-_fmtdict['e'] += r'(?:\.\d{n})(?:[eE][-+]?\d{n})|'
-_fmtdict['e'] += r'(?:[-+]?[nN][aA][aN])|'  # Not a Number
-_fmtdict['e'] += r'(?:[-+]?[iI][nN][fF](?:[iI][nN][iI][tT][yY])?)'  # infinity
-_fmtdict['f'] = _fmtdict['e']
-_fmtdict['g'] = _fmtdict['e']
-_fmtdict['s'] = r'\S{n}'
-_fmtdict['r'] = _fmtdict['s']
-_fmtdict['c'] = r'.{n}'
+_fmts = dict()
+# integral numbers
+_fmts['d'] = r'[-+]?[0-9]+'
+_fmts['u'] = r'[0-9]{n}'
+_fmts['o'] = r'[-+]?[0-7]+'
+_fmts['x'] = r'[-+]?(?:0[xX])?[0-9A-Fa-f]+'
+_fmts['i'] = r'[-+]?(?:(?:0[xX][0-9A-Fa-f]+)|(?:0[0-7]+)|(?:[0-9]+))'
+
+# real numbers
+_fmts['f'] = r'(?:[-+]?[0-9]*(?:\.[0-9]*)?(?:[eE][-+]?[0-9]+)?)|'  # literal
+_fmts['f'] += r'(?:[-+]?[nN][aA][nN])|'  # Not a Number
+_fmts['f'] += r'(?:[-+]?[iI][nN][fF](?:[iI][nN][iI][tT][yY])?)'  # infinity
+_fmts['e'] = _fmts['f']
+_fmts['g'] = _fmts['f']
+
+# strings and chars
+_fmts['s'] = r'\S{n}'
+_fmts['r'] = _fmts['s']
+_fmts['c'] = r'.{n}'
 
 
 # map specifiers to callables to cast to python types
 _calldict = dict()
-_calldict['i'] = int
+_calldict['i'] = functools.partial(int, base=0)
 _calldict['d'] = functools.partial(int, base=10)
 _calldict['u'] = _calldict['d']
 _calldict['o'] = functools.partial(int, base=8)
 _calldict['x'] = functools.partial(int, base=16)
-_calldict['e'] = float
-_calldict['f'] = _calldict['e']
-_calldict['g'] = _calldict['e']
+_calldict['f'] = float
+_calldict['e'] = _calldict['f']
+_calldict['g'] = _calldict['f']
 _calldict['s'] = _return_input  # allows bytes and strs to both work
 _calldict['c'] = _calldict['s']
-_calldict['r'] = eval
+_calldict['r'] = eval  # evaluate as python statements
 
 
 class SF_Pattern(object):
@@ -193,7 +197,7 @@ def _process_spec(s):
     if sfd['escape']:
         return r'\%'
 
-    spec = _fmtdict[sfd['spec'].lower()]
+    spec = _fmts[sfd['spec'].lower()]
 
     if sfd['width']:
         if sfd['spec'] == 'c':
@@ -242,19 +246,22 @@ def scanf(format, string):
     an empty tuple will be returned.
     """
     re_fmt = compile(format)
-    return re_fmt.scanf(string)
+    result = re_fmt.scanf(string)
+    print('"%s" <- "%s" = %s' % (format, string, result), file=sys.stderr)
+    return result
 
 
 def _test():
-    print(scanf('.*$ @ %d middle %s end %c', '.*$ @ 9 middle mo end ?'))
-    print(scanf('%(c)7c middle %(s)s end %(d)4d', 'asdfghj middle str end 1234'))
-    # print(scanf('    words @ %d middle %s almost end %c'))
-    # print(scanf('    some escapes %% and some other stuff %d'))
-    # print(scanf('try %e some %f floats %g'))
+    scanf('.*$ @ %d middle %s end %c', '.*$ @ 9 middle mo end ?')
+    scanf('%(c)7c middle %(s)s end %(d)4d', 'asdfghj middle str end 1234')
+    # scanf('    words @ %d middle %s almost end %c')
+    # scanf('    some escapes %% and some other stuff %d')
+    # scanf('try %e some %f floats %g')
 
-    print(scanf('%s: simple format', 'happy: simple format'))
-    print(scanf(b'%s: bytes format', b'happy: bytes format'))
-    print(scanf(b'parse a float %(float)f', b'parse a float 12345.2345'))
+    scanf('%s: unicode format', 'happy: unicode format')
+    scanf(b'%s: bytes format', b'happy: bytes format')
+    scanf(b'floats: %f %f %f %f', b'floats: 1.0 .1e20 NaN -Inf')
+    scanf(b'exp float %(float)f', b'exp float 12345.2345e2')
 
 if __name__ == '__main__':
     _test()
