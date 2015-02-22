@@ -208,7 +208,7 @@ def _process_spec(s):
     if sfd['skip']:
         spec = '(?:' + spec + ')'
     elif sfd['key']:
-        spec = '(?<' + sfd['key'] + '>' + spec + ')'
+        spec = '(?P<' + sfd['key'] + '>' + spec + ')'
     else:
         spec = '(' + spec + ')'
 
@@ -253,7 +253,7 @@ def _test():
 
     print(scanf('%s: simple format', 'happy: simple format'))
     print(scanf(b'%s: bytes format', b'happy: bytes format'))
-    print(scanf(b'parse a float %(key)f', b'parse a float 12345.2345'))
+    print(scanf(b'parse a float %(float)f', b'parse a float 12345.2345'))
 
 if __name__ == '__main__':
     _test()
