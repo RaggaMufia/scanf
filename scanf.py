@@ -179,20 +179,37 @@ def compile(format):
 
 def _process_ws(s):
     # split on whitespace
-    split = s.split()
+    if not s:
+        return ''
+    elif not s.strip():
+        return r'\s+'
+
+    split = []
+    if len(s.lstrip()) < len(s):
+        split.append('')
+
+    split += s.split()
+
+    if len(s.rstrip()) < len(s):
+        split.append('')
+    # print(split)
 
     # escape characters that might cause problems with regex
     for j in range(len(split)):
         split[j] = re.escape(split[j])
 
+    # print(split)
+
     # replace whitespace to consume all whitespace
     join = r'\s+'.join(split)
+    # print(join)
 
     return join
 
 
-def _process_spec(s):
-    sfd = _gspec.match(s).groupdict()
+def _process_spec(match):
+    # sfd = _gspec.match(s).groupdict()
+    sfd = match.groupdict()
 
     if sfd['escape']:
         return r'\%'
@@ -243,8 +260,15 @@ def translate(format):
     end_index = 0
     for match in _gspec.finditer(format):
         strlist.append(_process_ws(format[end_index:match.start()]))
-        strlist.append(_process_spec(format[match.start():match.end()]))
+        strlist.append(_process_spec(match))
+        # print('%r' % match.group(0))
         end_index = match.end()
+        # print('match end: %r' % (match.end()))
+        # print('format end: %r' % (len(format)))
+
+    if end_index != len(format):
+        print('trailing characters: %r' % format[end_index:])
+        strlist.append(_process_ws(format[end_index:]))
 
     return ''.join(strlist)
 
@@ -268,6 +292,9 @@ def _test():
 
     scanf('.*$ @ %d middle %s end %c', '.*$ @ 9 middle mo end ?')
     scanf('%(c)7c middle %(s)s end %(i)i', 'asdfghj middle str end 1234')
+
+    # test weird spacing
+    scanf('%s middle %s end', ' smog        middle \tbleck         end')
 
     scanf('%s: unicode format', 'happy: unicode format')
     scanf(b'%s: bytes format', b'happy: bytes format')
