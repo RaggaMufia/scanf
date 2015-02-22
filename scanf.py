@@ -219,6 +219,7 @@ def _process_spec(s):
     return spec
 
 
+# TODO: also return a tuple or dictionary of types to cast to
 def translate(scanf_spec):
     """Translate a scanf format into a regular expression."""
     strlst = []
@@ -245,11 +246,11 @@ def scanf(format, string):
 
 
 def _test():
-    # print(translate('.punct*$uation @ %d middle %s almost end %c'))
-    print(translate('%(singlechar)7c middle %(s)s almost end %(d)4d'))
-    # print(translate('    words @ %d middle %s almost end %c'))
-    # print(translate('    some escapes %% and some other stuff %d'))
-    # print(translate('try %e some %f floats %g'))
+    print(scanf('.*$ @ %d middle %s end %c', '.*$ @ 9 middle mo end ?'))
+    print(scanf('%(c)7c middle %(s)s end %(d)4d', 'asdfghj middle str end 1234'))
+    # print(scanf('    words @ %d middle %s almost end %c'))
+    # print(scanf('    some escapes %% and some other stuff %d'))
+    # print(scanf('try %e some %f floats %g'))
 
     print(scanf('%s: simple format', 'happy: simple format'))
     print(scanf(b'%s: bytes format', b'happy: bytes format'))
