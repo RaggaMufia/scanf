@@ -28,6 +28,18 @@ _gspec = r'(?P<escape>%%)|(?:%(?:\((?P<key>\w+)\))?(?P<skip>\*)?(?P<width>[0-9]+
 _gspec = re.compile(_gspec)
 
 
+def _return_input(obj):
+    return obj
+
+
+def _return_tuple(match):
+    return match.groups()
+
+
+def _return_dict(match):
+    return match.groupdict()
+
+
 # Map specifiers to their regex. Leave num repetitions to be filled in later.
 _fmtdict = dict()
 _fmtdict['i'] = r'[-+]?(?:0[xX][\dA-Fa-f]{n}|0[0-7]*|\d{n})'
@@ -56,21 +68,59 @@ _calldict['x'] = functools.partial(int, base=16)
 _calldict['e'] = float
 _calldict['f'] = _calldict['e']
 _calldict['g'] = _calldict['e']
-_calldict['s'] = lambda val: val  # allows bytes and strs to both work
+_calldict['s'] = _return_input  # allows bytes and strs to both work
 _calldict['c'] = _calldict['s']
 _calldict['r'] = eval
 
+
 class SF_Pattern(object):
-    def __new__(cls, fmt):
+    def __new__(cls, format):
         self = super(SF_Pattern, cls).__new__(cls)
-        self._type = None
+
+        if isinstance(format, bytes):
+            uni_str = str(format, 'ISO-8859-1')
+            trans_str = translate(uni_str)
+            re_fmt = bytes(trans_str, 'ISO-8859-1')
+        else:
+            re_fmt = translate(format)
+        self._format = format
+        self._re_format = re_fmt
+
+        self._re = cre = re.compile(re_fmt)
+
+        if len(cre.groupindex()) != cre.groups():
+            raise RuntimeError('cannot mix mapped and unmapped specifiers')
+        elif not cre.groupindex():
+            self._retfunc = _return_tuple
+            self._type = tuple
+        else:
+            self._retfunc = _return_dict
+            self._type = dict
+
         return self
 
     def __init__(self, fmt):
-        raise RuntimeError('SF_Pattern objects cannot be instantiated directly')
+        raise RuntimeError('Cannot instantiate SF_Pattern objects directly')
 
-    def scan(self, string):
-        pass
+    def scanf(self, string):
+        """Scan input string according to format.
+
+        Return either a tuple of values, or a dictionary, depending on how
+        specifiers were formatted.
+        """
+        match = self._re.match(string)
+        if match is not None:
+            return self._retfunc(match)
+
+    @property
+    def format(self):
+        """The initial input scanf format string."""
+        return self._format
+
+    @property
+    def re_format(self):
+        """The regex format string built from the input scanf format string."""
+        return self._re_format
 
     @property
     def type(self):
@@ -81,24 +131,12 @@ class SF_Pattern(object):
         return self._type
 
 
-def compile(fmt):
+def compile(format):
     """Return a new scanf pattern object.
 
-    Compiling a pattern is more efficient than using the module scan function.
+    Compiling a pattern is more efficient than using the module scanf function.
     """
-    return SF_Pattern.__new__(fmt)
-
-
-# lifted from fnmatch in the standard lib
-def _compile_pattern(pat):
-    """Compile a scanf format specifer into a regex pattern object."""
-    if isinstance(pat, bytes):
-        pat_str = str(pat, 'ISO-8859-1')
-        res_str = translate(pat_str)
-        res = bytes(res_str, 'ISO-8859-1')
-    else:
-        res = translate(pat)
-    return re.compile(res).match
+    return SF_Pattern.__new__(SF_Pattern, format)
 
 
 def _process_ws(s):
@@ -117,7 +155,6 @@ def _process_ws(s):
 
 def _process_spec(s):
     sfd = _gspec.match(s).groupdict()
-    print(sfd)
 
     if sfd['escape']:
         return r'\%'
@@ -159,30 +196,26 @@ def translate(scanf_spec):
         else:
             strlst.append(_process_ws(s))
 
-    print(scanf_spec)
-    print(strlst)
-    print(''.join(strlst))
-
     return ''.join(strlst)
 
 
-def scan(fmt, string):
+def scanf(format, string):
     """Scan the provided string.
 
     Return either a tuple or a dictionary of parsed values, or None if the
     string did not conform to the format. For a format string with no formats,
     an empty tuple will be returned.
     """
-    re_fmt = compile(fmt)
-    return re_fmt.scan(string)
+    re_fmt = compile(format)
+    return re_fmt.scanf(string)
 
 
 def _test():
-    translate('.punct*$uation @ %d middle %s almost end %c')
-    translate('%(singlechar)7c middle %(s)s almost end %(d)4d')
-    translate('    words @ %d middle %s almost end %c')
-    translate('    some escapes %% and some other stuff %d')
-    translate('try %e some %f floats %g')
+    print(translate('.punct*$uation @ %d middle %s almost end %c'))
+    print(translate('%(singlechar)7c middle %(s)s almost end %(d)4d'))
+    print(translate('    words @ %d middle %s almost end %c'))
+    print(translate('    some escapes %% and some other stuff %d'))
+    print(translate('try %e some %f floats %g'))
 
 if __name__ == '__main__':
     _test()
