@@ -64,18 +64,18 @@ _fmts['r'] = _fmts['c']
 
 
 # map specifiers to callables to cast to python types
-_calldict = dict()
-_calldict['i'] = functools.partial(int, base=0)
-_calldict['d'] = functools.partial(int, base=10)
-_calldict['u'] = _calldict['d']
-_calldict['o'] = functools.partial(int, base=8)
-_calldict['x'] = functools.partial(int, base=16)
-_calldict['f'] = float
-_calldict['e'] = _calldict['f']
-_calldict['g'] = _calldict['f']
-_calldict['s'] = _return_input  # allows bytes and strs to both work
-_calldict['c'] = _calldict['s']
-_calldict['r'] = eval  # evaluate as python statements
+_casts = dict()
+_casts['i'] = functools.partial(int, base=0)
+_casts['d'] = functools.partial(int, base=10)
+_casts['u'] = _casts['d']
+_casts['o'] = functools.partial(int, base=8)
+_casts['x'] = functools.partial(int, base=16)
+_casts['f'] = float
+_casts['e'] = _casts['f']
+_casts['g'] = _casts['f']
+_casts['s'] = _return_input  # allows bytes and strs to both work
+_casts['c'] = _casts['s']
+_casts['r'] = eval  # evaluate as python statements
 
 
 class SF_Pattern(object):
@@ -89,9 +89,8 @@ class SF_Pattern(object):
             re_fmt = trans_str.encode('ISO-8859-1')  # encode back to bytes
         else:
             re_fmt = translate(format)
-        self._format = format
-        self._re_format = re_fmt
 
+        self._format = format
         self._re = cre = re.compile(re_fmt)
 
         if cre.groupindex and len(cre.groupindex) != cre.groups:
@@ -126,8 +125,8 @@ class SF_Pattern(object):
 
     @property
     def re_format(self):
-        """The regex format string built from the input scanf format string."""
-        return self._re_format
+        """The regex pattern built from the input scanf format string."""
+        return self._re.pattern
 
     @property
     def type(self):
@@ -179,12 +178,13 @@ def compile(format):
 
 
 def _process_ws(s):
-    # split on whitespace
-    if not s:
+    # deal with common edge cases
+    if not s:  # empty string
         return ''
-    elif not s.strip():
+    elif not s.strip():  # string of only white space
         return r'\s+'
 
+    # split on whitespace, including leading and trailing
     split = []
     if len(s.lstrip()) < len(s):
         split.append('')
@@ -196,8 +196,8 @@ def _process_ws(s):
     # print(split)
 
     # escape characters that might cause problems with regex
-    for j in range(len(split)):
-        split[j] = re.escape(split[j])
+    for i in range(len(split)):
+        split[i] = re.escape(split[i])
 
     # print(split)
 
@@ -279,17 +279,17 @@ def _test():
     # translate('%(c)7c middle %(s)s end %(i)i')
     # return
 
-    scanf('.*$ @ %d middle %s end %c', '.*$ @ 9 middle mo end ?')
-    scanf('%(c)7c middle %(s)s end %(i)i', 'asdfghj middle str end 1234')
+    assert scanf('.*$ @ %d middle %s end %c', '.*$ @ 9 middle mo end ?')
+    assert scanf('%(c)7c middle %(s)s end %(i)i', 'asdfghj middle str end 123')
 
     # test weird spacing
-    scanf('%s middle %s end', ' smog        middle \tbleck         end')
+    assert scanf('%s middle %s end', ' smog        middle \tbleck         end')
 
-    scanf('%s: unicode format', 'happy: unicode format')
-    scanf(b'%s: bytes format', b'happy: bytes format')
-    scanf(b'floats: %f %f %f %f', b'floats: 1.0 .1e20 NaN Inf')
-    scanf(b'floats: %f %f %f %f', b'floats: -1.0 -.1e20 -NaN -Inf')
-    scanf(b'exp float %(float)f', b'exp float 12345.2345e2')
+    assert scanf('%s: unicode format', 'happy: unicode format')
+    assert scanf(b'%s: bytes format', b'happy: bytes format')
+    assert scanf(b'floats: %f %f %f %f', b'floats: 1.0 .1e20 NaN Inf')
+    assert scanf(b'floats: %f %f %f %f', b'floats: -1.0 -.1e20 -NaN -Inf')
+    assert scanf(b'exp float %(float)f', b'exp float 12345.2345e2')
 
 if __name__ == '__main__':
     _test()
