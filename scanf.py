@@ -2,7 +2,7 @@
 
 Although regular expressions are available in Python and are very powerful,
 they can be overly verbose and complicated for certain types of simple use
-cases. This module is designed to work with CPython 2.7 or greater.
+cases.
 """
 from __future__ import unicode_literals, print_function, absolute_import
 
@@ -18,10 +18,6 @@ if sys.version_info[0] < 3:
     range = xrange
 else:
     pass
-
-# spec with no groups for splitting
-_splitter = r'(%%|(?:%(?:\(\w+\))?\*?[0-9]*(?:h{1,2}|l{1,2}|j|z|t|L)?[duioxeEfFgGcrs]))'
-_splitter = re.compile(_splitter)
 
 # spec with groups
 _gspec = r'(?P<escape>%%)|(?:%(?:\((?P<key>\w+)\))?(?P<skip>\*)?(?P<width>[0-9]+)?(?:h{1,2}|l{1,2}|j|z|t|L)?(?P<spec>[duioxXeEfFgGcrs]))'
