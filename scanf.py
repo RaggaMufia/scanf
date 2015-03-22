@@ -27,15 +27,6 @@ _gspec = re.compile(_gspec)
 def _return_input(obj):
     return obj
 
-
-def _return_tuple(match):
-    return match.groups()
-
-
-def _return_dict(match):
-    return match.groupdict()
-
-
 # Map specifiers to their regex. Leave num repetitions to be filled in later.
 _fmts = dict()
 # integral numbers
@@ -45,6 +36,7 @@ _fmts['o'] = r'[-+]?[0-7]+'
 _fmts['x'] = r'[-+]?(?:0[xX])?[0-9A-Fa-f]+'
 _fmts['i'] = r'[-+]?(?:(?:0[xX][0-9A-Fa-f]+)|(?:0[0-7]+)|(?:[0-9]+))'
 
+# TODO: fix float parsing
 # real numbers
 _fmts['f'] = r'(?:[-+]?(?:(?:[0-9]+\.?)|(?:\.[0-9]+)|(?:[0-9]+\.[0-9]+)))'
 _fmts['f'] += r'(?:[eE][-+]?[0-9]+)?'  # optional exponent
@@ -92,17 +84,47 @@ class SF_Pattern(object):
         if cre.groupindex and len(cre.groupindex) != cre.groups:
             raise RuntimeError('cannot mix mapped and unmapped specifiers')
         elif not cre.groupindex:
-            self._retfunc = _return_tuple
+            self._retfunc = self._return_tuple
             self._type = tuple
         else:
-            self._retfunc = _return_dict
+            self._retfunc = self._return_dict
             self._type = dict
+
+        self._casts = self._get_types()
 
         return self
 
     def __init__(self, format):
         """Dummy function."""
         raise RuntimeError('Cannot instantiate SF_Pattern objects directly')
+
+    def _return_tuple(self, match):
+        t = []
+        for c, v in zip(self._casts, match.groups()):
+            t.append(_casts[c](v))
+        return tuple(t)
+
+    def _return_dict(self, match):
+        d = match.groupdict()
+        for k, v in d.items():
+            d[k] = _casts[self._casts[k]](v)
+        return d
+
+    def _get_types(self):
+        retval = None
+        if self.type == dict:
+            retval = {}
+            for match in _gspec.finditer(self.format):
+                d = match.groupdict()
+                retval[d['key']] = d['spec'].lower()
+        elif self.type == tuple:
+            retval = []
+            for match in _gspec.finditer(self.format):
+                d = match.groupdict()
+                retval.append(d['spec'].lower())
+            retval = tuple(retval)
+        print(retval, file=sys.stderr)
+        return retval
 
     def scanf(self, string):
         """Scan input string according to format.
@@ -111,8 +133,7 @@ class SF_Pattern(object):
         specifiers were formatted.
         """
         match = self._re.match(string)
-        if match is not None:
-            return self._retfunc(match)
+        return self._retfunc(match) if match is not None else None
 
     @property
     def format(self):
@@ -242,7 +263,6 @@ def _process_spec(match):
     return spec
 
 
-# TODO: also return a tuple or dictionary of types to cast to
 def translate(format):
     strlist = []
     end_index = 0
@@ -285,7 +305,7 @@ def _test():
     assert scanf(b'%s: bytes format', b'happy: bytes format')
     assert scanf(b'floats: %f %f %f %f', b'floats: 1.0 .1e20 NaN Inf')
     assert scanf(b'floats: %f %f %f %f', b'floats: -1.0 -.1e20 -NaN -Inf')
-    assert scanf(b'exp float %(float)f', b'exp float 12345.2345e2')
+    assert scanf(b'exp float %(float)f', b'exp float 12345.2345e2') == {b'float': 1234523.45}
 
 if __name__ == '__main__':
     _test()
