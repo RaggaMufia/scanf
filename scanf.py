@@ -8,7 +8,18 @@ from __future__ import unicode_literals, print_function, absolute_import
 
 import re
 import sys
+import logging
 import functools
+
+try:
+    import unittest2 as unittest
+except:
+    import unittest
+
+logging.basicConfig()
+_log = logging.getLogger(__name__ if __name__ != '__main__' else 'scanf')
+_log.setLevel(logging.DEBUG)
+
 
 # account for differences in in Python 2 and 3
 if sys.version_info[0] < 3:
@@ -21,7 +32,9 @@ else:
 
 # spec with groups
 _gspec = r'(?P<escape>%%)|(?:%(?:\((?P<key>\w+)\))?(?P<skip>\*)?(?P<width>[0-9]+)?(?:h{1,2}|l{1,2}|j|z|t|L)?(?P<spec>[duioxXeEfFgGcrs]))'
+_gbspec = re.compile(_gspec.encode('latin1'))
 _gspec = re.compile(_gspec)
+
 
 
 def _return_input(obj):
@@ -38,8 +51,8 @@ _fmts['i'] = r'[-+]?(?:(?:0[xX][0-9A-Fa-f]+)|(?:0[0-7]+)|(?:[0-9]+))'
 
 # TODO: fix float parsing
 # real numbers
-_fmts['f'] = r'(?:[-+]?(?:(?:[0-9]+\.?)|(?:\.[0-9]+)|(?:[0-9]+\.[0-9]+)))'
-_fmts['f'] += r'(?:[eE][-+]?[0-9]+)?'  # optional exponent
+_fmts['f'] = r'(?:[-+]?(?:(?:\.[0-9]+)|(?:[0-9]+\.[0-9]+)|(?:[0-9]+\.?))'
+_fmts['f'] += r'(?:[eE][-+]?[0-9]+)?)'  # optional exponent
 _fmts['f'] += r'|(?:[-+]?[nN][aA][nN])'  # Not a Number (NaN)
 _fmts['f'] += r'|(?:[-+]?[iI][nN][fF](?:[iI][nN][iI][tT][yY])?)'  # infinity
 _fmts['e'] = _fmts['f']
@@ -49,6 +62,9 @@ _fmts['g'] = _fmts['f']
 _fmts['s'] = r'\S{n}'
 _fmts['c'] = r'.{n}'
 _fmts['r'] = _fmts['c']
+
+for _key in frozenset(_fmts):
+    _fmts[_key.encode('latin1')] = _fmts[_key]
 
 
 # map specifiers to callables to cast to python types
@@ -65,6 +81,8 @@ _casts['s'] = _return_input  # allows bytes and strs to both work
 _casts['c'] = _casts['s']
 _casts['r'] = eval  # evaluate as python statements
 
+for _key in frozenset(_casts):
+    _casts[_key.encode('latin1')] = _casts[_key]
 
 class SF_Pattern(object):
     def __new__(cls, format):
@@ -75,8 +93,10 @@ class SF_Pattern(object):
             uni_str = format.decode('ISO-8859-1')  # decode to unicode
             trans_str = translate(uni_str)  # translate only works with unicode
             re_fmt = trans_str.encode('ISO-8859-1')  # encode back to bytes
+            self._spec = _gbspec
         else:
             re_fmt = translate(format)
+            self._spec = _gspec
 
         self._format = format
         self._re = cre = re.compile(re_fmt)
@@ -107,23 +127,33 @@ class SF_Pattern(object):
     def _return_dict(self, match):
         d = match.groupdict()
         for k, v in d.items():
-            d[k] = _casts[self._casts[k]](v)
+            cast = self._casts[k]
+            d[k] = _casts[cast](v)
         return d
 
     def _get_types(self):
         retval = None
+        if isinstance(self.format, bytes):
+            key = 'key'
+            spec= 'spec'
+        else:
+            key = 'key'
+            spec= 'spec'
+
         if self.type == dict:
             retval = {}
-            for match in _gspec.finditer(self.format):
+            for match in self._spec.finditer(self.format):
                 d = match.groupdict()
-                retval[d['key']] = d['spec'].lower()
+                k = d[key]
+                _log.debug(k)
+                retval[k] = d[spec].lower()
         elif self.type == tuple:
             retval = []
-            for match in _gspec.finditer(self.format):
+            for match in self._spec.finditer(self.format):
                 d = match.groupdict()
-                retval.append(d['spec'].lower())
+                retval.append(d[spec].lower())
             retval = tuple(retval)
-        print(retval, file=sys.stderr)
+        _log.debug(retval)
         return retval
 
     def scanf(self, string):
@@ -210,17 +240,17 @@ def _process_ws(s):
 
     if len(s.rstrip()) < len(s):
         split.append('')
-    # print(split)
+    # _log.debug(split)
 
     # escape characters that might cause problems with regex
     for i in range(len(split)):
         split[i] = re.escape(split[i])
 
-    # print(split)
+    # _log.debug(split)
 
     # replace whitespace to consume all whitespace
     join = r'\s+'.join(split)
-    # print(join)
+    # _log.debug(join)
 
     return join
 
@@ -287,25 +317,57 @@ def scanf(format, string):
     """
     re_fmt = compile(format)
     result = re_fmt.scanf(string)
-    print('%r <- %r = %r' % (format, string, result), file=sys.stderr)
+    _log.debug('%r <- %r = %r', format, string, result)
     return result
+
+
+class _TestScanf(unittest.TestCase):
+    def setUp(self):
+        import math
+        self.math = math
+
+    def test_int_parsing(self):
+        d = scanf('%(c)7c middle %(s)s end %(i)i', 'asdfghj middle str end 123')
+        self.assertEqual(d['i'], 123)
+
+        t = scanf('.*$ @ %d middle %s end %c', '.*$ @ 9 middle mo end ?')
+        self.assertEqual(t[0], 9)
+
+    def test_float_parsing(self):
+        t = scanf(b'floats: %f %f %f %f', b'floats: 1.0 .1e20 -Inf Inf')
+        self.assertEqual(t, (1.0, .1e20, float('-Inf'), float('Inf')))
+
+        t = scanf(b'floats: %f %f %f %f', b'floats: -1.0 -.1e20 -NaN -Inf')
+        self.assertTrue(self.math.isnan(t[2]))
+        self.assertTrue(self.math.isinf(t[3]))
+        self.assertLess(t[3], 0)
+
+        t = scanf(b'floats: %f', b'floats: 1.')
+        self.assertEqual(t[0], 1.)
+
+        d = scanf(b'exp float %(float)f', b'exp float 12345.2345e2')
+        self.assertEqual(d[b'float'], 12345.2345e2)
+
+    def test_ws_ignore(self):
+        # test weird spacing
+        retval = scanf('%s middle %s end',
+                       ' smog        middle \tbleck         end')
+        self.assertIsNotNone(retval)
+
+    def test_uni_and_bytes(self):
+        retval = scanf('%s: unicode format', 'happy: unicode format')
+        self.assertIsNotNone(retval)
+
+        retval = scanf(b'%s: bytes format', b'happy: bytes format')
+        self.assertIsNotNone(retval)
 
 
 def _test():
     # translate('%(c)7c middle %(s)s end %(i)i')
     # return
+    pass
 
-    assert scanf('.*$ @ %d middle %s end %c', '.*$ @ 9 middle mo end ?')
-    assert scanf('%(c)7c middle %(s)s end %(i)i', 'asdfghj middle str end 123')
-
-    # test weird spacing
-    assert scanf('%s middle %s end', ' smog        middle \tbleck         end')
-
-    assert scanf('%s: unicode format', 'happy: unicode format')
-    assert scanf(b'%s: bytes format', b'happy: bytes format')
-    assert scanf(b'floats: %f %f %f %f', b'floats: 1.0 .1e20 NaN Inf')
-    assert scanf(b'floats: %f %f %f %f', b'floats: -1.0 -.1e20 -NaN -Inf')
-    assert scanf(b'exp float %(float)f', b'exp float 12345.2345e2') == {b'float': 1234523.45}
 
 if __name__ == '__main__':
-    _test()
+    unittest.main(verbosity=2)
+    # _test()
