@@ -16,7 +16,8 @@ try:
 except:
     import unittest
 
-logging.basicConfig()
+_LFMT = '%(levelname)s: "%(pathname)s" line %(lineno)d function "%(funcName)s" - "%(message)s"'
+logging.basicConfig(format=_LFMT)
 _log = logging.getLogger(__name__ if __name__ != '__main__' else 'scanf')
 _log.setLevel(logging.DEBUG)
 
@@ -127,6 +128,8 @@ class SF_Pattern(object):
     def _return_dict(self, match):
         d = match.groupdict()
         for k, v in d.items():
+            _log.debug('k, v = %r, %r', k, v)
+            _log.debug('self._casts = %r', self._casts)
             cast = self._casts[k]
             d[k] = _casts[cast](v)
         return d
@@ -151,6 +154,8 @@ class SF_Pattern(object):
             retval = []
             for match in self._spec.finditer(self.format):
                 d = match.groupdict()
+                _log.debug(d)
+                _log.debug(spec)
                 retval.append(d[spec].lower())
             retval = tuple(retval)
         _log.debug(retval)
